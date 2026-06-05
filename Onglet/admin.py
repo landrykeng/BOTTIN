@@ -1,8 +1,12 @@
 import streamlit as st
 import pandas as pd
+import os
 from datetime import datetime
 from Authentification import admin_panel
-from data.simulations import generer_adjudications, get_svt_dataframe, PAYS_CEMAC
+from data.loader import (get_emissions, get_encours_mensuels, get_svt,
+                          get_calendrier, EXCEL_PATH, PAYS_CEMAC)
+
+EXCEL_FILE = EXCEL_PATH
 
 def show(sous_page="Gestion des utilisateurs"):
     if not st.session_state.get("authenticated", False):
@@ -14,121 +18,164 @@ def show(sous_page="Gestion des utilisateurs"):
         return
 
     st.markdown(f"""
-    <div style="background:linear-gradient(90deg,#003366,#004080); color:white; padding:0.6rem 1.2rem; border-radius:6px; border-left:4px solid #C8A84B; margin-bottom:1.5rem;">
-        <span style="font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; color:#C8A84B;">Espace d'administration</span> &nbsp;|&nbsp; 
-        <span style="font-weight:600;">{sous_page}</span>
-    </div>
-    """, unsafe_allow_html=True)
+    <div style="background:linear-gradient(90deg,#003366,#004080);color:white;padding:0.6rem 1.2rem;
+    border-radius:6px;border-left:4px solid #C8A84B;margin-bottom:1.5rem;">
+        <span style="font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;color:#C8A84B;">
+        Espace d'administration</span> &nbsp;|&nbsp; <span style="font-weight:600;">{sous_page}</span>
+    </div>""", unsafe_allow_html=True)
 
-    # ── Gestion des utilisateurs ────────────────────────────────────────────
+    # ── Gestion des utilisateurs ─────────────────────────────────────────────
     if sous_page == "Gestion des utilisateurs":
         st.title("Gestion des utilisateurs")
         admin_panel()
 
-    # ── Import données marché ─────────────────────────────────────────────
+    # ── Import données marché ─────────────────────────────────────────────────
     elif sous_page == "Import données marché":
         st.title("Import des données de marché")
-        st.markdown("Importez les données d'encours mensuels et de résultats d'adjudications depuis les fichiers Excel/CSV fournis par la CRCT.")
+        st.markdown(f"""
+        <div class="app-card">
+        Toutes les données de la plateforme proviennent du fichier Excel :
+        <code>{EXCEL_FILE}</code><br>
+        Mettez à jour les feuilles correspondantes puis rechargez la page.
+        </div>""", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
 
-        tab_enc, tab_adj = st.tabs([":material/upload_file: Encours mensuels", ":material/upload_file: Résultats d'adjudications"])
+        tab_enc, tab_adj, tab_remb, tab_cal = st.tabs([
+            ":material/upload_file: Import Excel direct",
+            ":material/table: Aperçu EMISSIONS",
+            ":material/table: Aperçu REMBOURSEMENTS",
+            ":material/calendar_month: Aperçu CALENDRIER",
+        ])
 
         with tab_enc:
-            st.markdown("#### Import des encours mensuels")
-            st.info(":material/info: Format attendu : colonnes [pays, instrument (BTA/OTA), maturite, encours_total, date_mois]")
-            fichier = st.file_uploader("Choisir le fichier Excel ou CSV", type=["xlsx","csv"], key="enc_upload")
+            st.markdown("#### Remplacer le fichier Excel de la base de données")
+            st.info("""**Procédure :**
+1. Téléchargez le fichier Excel ci-dessous
+2. Ouvrez-le et mettez à jour les feuilles souhaitées
+3. Téléversez le fichier modifié ci-dessous
+4. Rechargez la page pour que les changements prennent effet""")
+
+            if os.path.exists(EXCEL_FILE):
+                with open(EXCEL_FILE, "rb") as f:
+                    st.download_button(":material/download: Télécharger la base de données Excel",
+                        f.read(), "CTDAM_CEMAC_Base_Donnees.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+            fichier = st.file_uploader("Téléverser le fichier Excel mis à jour",
+                                        type=["xlsx"], key="excel_upload")
             if fichier:
                 try:
-                    if fichier.name.endswith(".csv"):
-                        df = pd.read_csv(fichier)
+                    # Valider qu'il s'agit bien d'un Excel avec les bonnes feuilles
+                    xl = pd.ExcelFile(fichier)
+                    feuilles_attendues = ["EMISSIONS","REMBOURSEMENTS","SVT","SGP","SDB",
+                                          "PAYS_MACRO","ENCOURS_MENSUEL","CALENDRIER_EMISSIONS",
+                                          "COURBE_TAUX","DETENTEURS","DOCUMENTS_META"]
+                    feuilles_presentes = xl.sheet_names
+                    manquantes = [f for f in feuilles_attendues if f not in feuilles_presentes]
+
+                    if manquantes:
+                        st.warning(f"Feuilles manquantes dans le fichier : {manquantes}")
                     else:
-                        df = pd.read_excel(fichier)
-                    st.success(f":material/check_circle: Fichier chargé : {len(df)} lignes, {len(df.columns)} colonnes")
-                    st.dataframe(df.head(10), use_container_width=True, hide_index=True)
-                    if st.button(":material/save: Valider l'import", type="primary"):
-                        st.success(":material/check_circle: Données importées et indexées avec succès.")
+                        # Sauvegarder
+                        with open(EXCEL_FILE, "wb") as out:
+                            out.write(fichier.getvalue())
+                        st.success(f":material/check_circle: Base de données mise à jour avec succès — {len(feuilles_presentes)} feuilles chargées.")
+                        st.info("Rechargez la page (F5) pour voir les données actualisées.")
+                except Exception as e:
+                    st.error(f":material/error: Erreur : {e}")
+
+            st.markdown("---")
+            st.markdown("#### Import partiel par feuille (CSV/Excel)")
+            feuille_cible = st.selectbox("Feuille cible", [
+                "EMISSIONS","REMBOURSEMENTS","ENCOURS_MENSUEL","CALENDRIER_EMISSIONS",
+                "COURBE_TAUX","DETENTEURS","PAYS_MACRO","SVT","SGP","SDB",
+                "INVESTISSEURS_INST","CALCULS_MARCHE","DOCUMENTS_META"])
+            fichier2 = st.file_uploader("Fichier à importer (CSV ou Excel)", type=["csv","xlsx"], key="partial_upload")
+            if fichier2:
+                try:
+                    df_import = pd.read_csv(fichier2) if fichier2.name.endswith(".csv") else pd.read_excel(fichier2)
+                    st.success(f":material/check_circle: Aperçu — {len(df_import)} lignes, {len(df_import.columns)} colonnes")
+                    st.dataframe(df_import.head(10), use_container_width=True, hide_index=True)
+                    if st.button(":material/save: Valider l'import dans l'Excel", type="primary"):
+                        # Écrire dans la feuille cible
+                        with pd.ExcelWriter(EXCEL_FILE, engine="openpyxl", mode="a",
+                                            if_sheet_exists="replace") as writer:
+                            df_import.to_excel(writer, sheet_name=feuille_cible, index=False)
+                        st.success(f"Feuille **{feuille_cible}** mise à jour.")
                 except Exception as e:
                     st.error(f":material/error: Erreur : {e}")
 
         with tab_adj:
-            st.markdown("#### Import des résultats d'adjudications")
-            st.info(":material/info: Format attendu : colonnes [date, pays, instrument, maturite, montant_emis, montant_souscrit, montant_retenu, taux_marginal, taux_moyen, taux_couverture, code_isin]")
-            fichier2 = st.file_uploader("Choisir le fichier Excel ou CSV", type=["xlsx","csv"], key="adj_upload")
-            if fichier2:
-                try:
-                    if fichier2.name.endswith(".csv"):
-                        df2 = pd.read_csv(fichier2)
-                    else:
-                        df2 = pd.read_excel(fichier2)
-                    st.success(f":material/check_circle: Fichier chargé : {len(df2)} lignes")
-                    st.dataframe(df2.head(10), use_container_width=True, hide_index=True)
-                    if st.button(":material/save: Valider l'import", type="primary", key="val_adj"):
-                        st.success(":material/check_circle: Résultats d'adjudications importés.")
-                except Exception as e:
-                    st.error(f":material/error: Erreur : {e}")
+            df_adj = get_emissions()
+            if not df_adj.empty:
+                st.markdown(f"**{len(df_adj)} émissions dans la base**")
+                st.dataframe(df_adj.head(20), use_container_width=True, hide_index=True)
+            else:
+                st.info("Feuille EMISSIONS vide.")
 
-    # ── Gestion du Bottin ─────────────────────────────────────────────────
+        with tab_remb:
+            try:
+                df_remb = pd.read_excel(EXCEL_FILE, sheet_name="REMBOURSEMENTS", header=2)
+                df_remb = df_remb.dropna(how="all")
+                st.markdown(f"**{len(df_remb)} remboursements dans la base**")
+                st.dataframe(df_remb.head(20), use_container_width=True, hide_index=True)
+            except Exception:
+                st.info("Feuille REMBOURSEMENTS vide.")
+
+        with tab_cal:
+            df_cal = get_calendrier()
+            if not df_cal.empty:
+                st.dataframe(df_cal, use_container_width=True, hide_index=True)
+            else:
+                st.info("Feuille CALENDRIER_EMISSIONS vide.")
+
+    # ── Gestion du Bottin ─────────────────────────────────────────────────────
     elif sous_page == "Gestion du Bottin":
         st.title("Gestion du Bottin des investisseurs")
-        df_svt = get_svt_dataframe()
+        st.markdown("""Gérez les fiches SVT, SGP, SDB directement dans l'Excel
+        (feuilles **SVT**, **SGP**, **SDB**, **INVESTISSEURS_INST**) puis rechargez la page.""")
 
-        tab_liste, tab_ajout = st.tabs([":material/list: Fiches existantes", ":material/add: Ajouter / Modifier"])
-
-        with tab_liste:
+        df_svt = get_svt()
+        st.markdown("### Fiches SVT actuelles")
+        if not df_svt.empty:
             st.dataframe(df_svt, use_container_width=True, hide_index=True)
-            st.info(":material/info: Les mises à jour soumises par les opérateurs SVT/SGP/SDB apparaissent ici pour validation avant publication.")
 
-            demandes = [
-                {"institution": "BGFI Bank Tchad", "type": "SVT", "modification": "Mise à jour email Front Office", "date": "2026-04-10", "statut": "En attente"},
-                {"institution": "Afriland First Bank", "type": "SVT", "modification": "Nouveau responsable Middle Office", "date": "2026-04-12", "statut": "En attente"},
-            ]
-            st.markdown("#### Demandes de mise à jour en attente")
-            for d in demandes:
-                col1, col2, col3 = st.columns([4,1,1])
-                with col1:
-                    st.markdown(f"**{d['institution']}** ({d['type']}) — {d['modification']} · {d['date']}")
-                with col2:
-                    if st.button(":material/check: Valider", key=f"val_{d['institution']}"):
-                        st.success("Validé")
-                with col3:
-                    if st.button(":material/close: Rejeter", key=f"rej_{d['institution']}"):
-                        st.warning("Rejeté")
+        # Demandes de mise à jour (statique pour illustration)
+        st.markdown("### Demandes de mise à jour en attente")
+        demandes = [
+            {"institution":"BGFI Bank Tchad","type":"SVT","modification":"Mise à jour email Front Office","date":"2026-04-10"},
+        ]
+        for d in demandes:
+            col1, col2, col3 = st.columns([4,1,1])
+            with col1:
+                st.markdown(f"**{d['institution']}** ({d['type']}) — {d['modification']} · {d['date']}")
+            with col2:
+                if st.button(":material/check: Valider", key=f"val_{d['institution']}"):
+                    st.success("Validé — modifiez l'Excel en conséquence.")
+            with col3:
+                if st.button(":material/close: Rejeter", key=f"rej_{d['institution']}"):
+                    st.warning("Rejeté.")
 
-        with tab_ajout:
-            with st.form("ajout_bottin"):
-                c1, c2 = st.columns(2)
-                with c1:
-                    nom = st.text_input("Raison sociale *")
-                    type_acteur = st.selectbox("Type", ["SVT","SGP","SDB","Investisseur institutionnel"])
-                    pays = st.selectbox("Pays", [v["nom"] for v in PAYS_CEMAC.values()])
-                with c2:
-                    statut = st.selectbox("Statut", ["Actif","Suspendu"])
-                    date_conv = st.date_input("Date de convention")
-                    agrement = st.text_input("N° d'agrément")
-
-                front = st.text_input("Email Front Office")
-                middle = st.text_input("Email Middle Office")
-                back = st.text_input("Email Back Office")
-
-                if st.form_submit_button(":material/save: Enregistrer la fiche", type="primary"):
-                    st.success(f":material/check_circle: Fiche **{nom}** enregistrée dans le Bottin.")
-
-    # ── Gestion émissions ──────────────────────────────────────────────────
+    # ── Gestion émissions ─────────────────────────────────────────────────────
     elif sous_page == "Gestion émissions":
         st.title("Gestion du calendrier des émissions")
+        st.markdown("""Les émissions sont gérées dans les feuilles **EMISSIONS** et **CALENDRIER_EMISSIONS** de l'Excel.""")
 
-        tab_cal, tab_new, tab_res = st.tabs([
-            ":material/calendar_month: Calendrier",
-            ":material/add_circle: Nouvelle adjudication",
-            ":material/edit_document: Publier un résultat",
+        tab_cal, tab_new = st.tabs([
+            ":material/calendar_month: Calendrier actuel",
+            ":material/add_circle: Ajouter une adjudication",
         ])
 
         with tab_cal:
-            from data.simulations import generer_calendrier
-            df_cal = generer_calendrier(15)
-            st.dataframe(df_cal, use_container_width=True, hide_index=True)
+            df_cal = get_calendrier()
+            if not df_cal.empty:
+                st.dataframe(df_cal, use_container_width=True, hide_index=True)
+            else:
+                st.info("Aucune émission programmée.")
 
         with tab_new:
-            with st.form("new_adjudication"):
+            st.info("Pour ajouter une adjudication, ajoutez une ligne dans la feuille **CALENDRIER_EMISSIONS** de l'Excel puis rechargez.")
+            with st.form("new_adj"):
                 c1, c2 = st.columns(2)
                 with c1:
                     pays_n = st.selectbox("Pays émetteur", [v["nom"] for v in PAYS_CEMAC.values()])
@@ -136,72 +183,66 @@ def show(sous_page="Gestion des utilisateurs"):
                     maturite_n = st.selectbox("Maturité", ["13 semaines","26 semaines","52 semaines","2 ans","3 ans","5 ans","7 ans","10 ans","15 ans"])
                 with c2:
                     date_n = st.date_input("Date d'adjudication")
-                    heure_n = st.time_input("Heure limite")
                     montant_n = st.number_input("Montant indicatif (M XAF)", value=10000, step=1000)
-
-                statut_n = st.selectbox("Statut", ["Prévisionnel","Confirmé"])
+                    statut_n = st.selectbox("Statut", ["Prévisionnel","Confirmé"])
                 if st.form_submit_button(":material/add: Ajouter au calendrier", type="primary"):
-                    st.success(f":material/check_circle: Adjudication {instrument_n} — {pays_n} ajoutée au calendrier ({statut_n}).")
+                    st.success(f"Ajoutez manuellement cette ligne dans l'Excel : {pays_n} — {instrument_n} {maturite_n} — {date_n} — {montant_n} M XAF — {statut_n}")
 
-        with tab_res:
-            with st.form("publier_resultat"):
-                adj_id = st.selectbox("Sélectionner l'adjudication", ["BTA 13s — Cameroun — 2026-04-20","OTA 5a — Gabon — 2026-04-22"])
-                c1, c2, c3 = st.columns(3)
-                with c1:
-                    mont_souscrit = st.number_input("Montant souscrit (M XAF)", value=18000)
-                    mont_retenu = st.number_input("Montant retenu (M XAF)", value=10000)
-                with c2:
-                    taux_marg = st.number_input("Taux marginal (%)", value=4.25, step=0.01)
-                    taux_moy = st.number_input("Taux moyen pondéré (%)", value=4.18, step=0.01)
-                with c3:
-                    taux_couv = st.number_input("Taux de couverture", value=1.8, step=0.01)
-                    code_isin = st.text_input("Code ISIN", value="XACMRBTA2026")
-                if st.form_submit_button(":material/publish: Publier le résultat", type="primary"):
-                    st.success(":material/check_circle: Résultat publié avec succès. Notifications envoyées aux abonnés.")
-
-    # ── Tableau de bord admin ──────────────────────────────────────────────
+    # ── Tableau de bord admin ─────────────────────────────────────────────────
     elif sous_page == "Tableau de bord admin":
         st.title("Tableau de bord d'utilisation")
+        from Authentification import load_users
+        users = load_users()
+        nb_total = len(users.get("users",{}))
+        nb_actifs = sum(1 for u in users.get("users",{}).values() if u.get("active", True))
+        nb_attente = sum(1 for u in users.get("users",{}).values()
+                        if str(u.get("status","")).lower() in ["en attente","pending"])
+
+        df_adj = get_emissions()
+        nb_adj = len(df_adj)
 
         c1, c2, c3, c4 = st.columns(4)
         for col, val, label in [
-            (c1,"1 247","Visiteurs (30j)"),
-            (c2,"83","Comptes actifs"),
-            (c3,"12","En attente validation"),
-            (c4,"3 418","Téléchargements (30j)"),
+            (c1, nb_total, "Comptes total"),
+            (c2, nb_actifs, "Comptes actifs"),
+            (c3, nb_attente, "En attente validation"),
+            (c4, nb_adj, "Émissions en base"),
         ]:
             with col:
-                st.markdown(f"""<div class="metric-card"><div class="metric-value">{val}</div><div class="metric-label">{label}</div></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="metric-card">
+                    <div class="metric-value">{val}</div>
+                    <div class="metric-label">{label}</div></div>""", unsafe_allow_html=True)
 
         st.markdown("---")
-        st.markdown("### Pages les plus consultées (30 derniers jours)")
-        import plotly.express as px
-        pages_data = {"Page": ["Accueil","Statistiques","Bottin","Calendrier","Documents","Simulation"],
-                      "Visites": [520, 310, 280, 190, 175, 140]}
-        fig = px.bar(pages_data, x="Visites", y="Page", orientation="h",
-            color_discrete_sequence=["#003366"])
-        fig.update_layout(plot_bgcolor="white", paper_bgcolor="white",
-            font=dict(family="Source Sans 3"), height=280,
-            yaxis=dict(autorange="reversed"), margin=dict(l=0,r=0,t=10,b=0))
-        st.plotly_chart(fig, use_container_width=True)
+        # Répartition utilisateurs par statut
+        if users.get("users"):
+            status_count = {}
+            for u in users["users"].values():
+                s = u.get("status","Utilisateur")
+                status_count[s] = status_count.get(s,0) + 1
+            import plotly.express as px
+            df_status = pd.DataFrame(list(status_count.items()), columns=["Statut","Nombre"])
+            fig = px.bar(df_status, x="Nombre", y="Statut", orientation="h",
+                color_discrete_sequence=["#003366"])
+            fig.update_layout(plot_bgcolor="white", paper_bgcolor="white",
+                height=250, margin=dict(l=0,r=0,t=10,b=0))
+            st.markdown("### Répartition des utilisateurs par statut")
+            st.plotly_chart(fig, use_container_width=True)
 
-    # ── Journal d'activité ─────────────────────────────────────────────────
+    # ── Journal d'activité ────────────────────────────────────────────────────
     elif sous_page == "Journal d'activité":
         st.title("Journal d'activité")
-        st.caption("Historique de toutes les actions effectuées sur la plateforme.")
-
+        st.caption("Historique des actions sur la plateforme.")
         journal = [
-            {"date": "2026-04-14 09:12", "utilisateur": "admin_beac", "action": "Connexion", "détail": "Session ouverte"},
-            {"date": "2026-04-14 09:15", "utilisateur": "admin_beac", "action": "Validation compte", "détail": "Compte investisseur 'sgcam_tresor' validé"},
-            {"date": "2026-04-13 14:30", "utilisateur": "bgfi_gabon", "action": "Mise à jour Bottin", "détail": "Mise à jour email Front Office"},
-            {"date": "2026-04-13 11:05", "utilisateur": "admin_beac", "action": "Import données", "détail": "Encours mensuels Mars 2026 importés (6 pays, 2 instruments)"},
-            {"date": "2026-04-12 16:45", "utilisateur": "admin_beac", "action": "Publication résultat", "détail": "BTA 13s Cameroun — 10 000 M XAF — taux marginal 3.45%"},
-            {"date": "2026-04-11 10:20", "utilisateur": "afriland_mid", "action": "Téléchargement", "détail": "Bulletin trimestriel T1 2026 téléchargé"},
+            {"date": datetime.now().strftime("%Y-%m-%d %H:%M"), "utilisateur": "admin_beac",
+             "action": "Connexion", "détail": "Session ouverte"},
+            {"date": datetime.now().strftime("%Y-%m-%d %H:%M"), "utilisateur": "admin_beac",
+             "action": "Import Excel", "détail": "Base de données mise à jour"},
         ]
-        df_journal = pd.DataFrame(journal)
+        df_j = pd.DataFrame(journal)
         search_j = st.text_input(":material/search: Filtrer le journal")
         if search_j:
-            df_journal = df_journal[df_journal.apply(lambda r: search_j.lower() in r.to_string().lower(), axis=1)]
-        st.dataframe(df_journal, use_container_width=True, hide_index=True)
-        csv = df_journal.to_csv(index=False).encode("utf-8")
-        st.download_button(":material/download: Exporter le journal", csv, "journal.csv", key="dl_journal")
+            df_j = df_j[df_j.apply(lambda r: search_j.lower() in r.to_string().lower(), axis=1)]
+        st.dataframe(df_j, use_container_width=True, hide_index=True)
+        csv = df_j.to_csv(index=False).encode("utf-8")
+        st.download_button(":material/download: Exporter", csv, "journal.csv")

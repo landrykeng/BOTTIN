@@ -7,7 +7,7 @@ def show():
 
     result = authentication_system(required_status=None, key="main_login")
     if result:
-        st.success(":material/check_circle: Vous êtes connecté. Utilisez la navigation dans le menu pour accéder aux modules.")
+        st.success(":material/check_circle: Vous êtes connecté. Utilisez la navigation dans le menu.")
         if st.button(":material/contacts: Accéder au Bottin des investisseurs", type="primary"):
             st.session_state["page"] = "Bottin des investisseurs"
             st.rerun()
