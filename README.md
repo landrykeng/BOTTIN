@@ -1,6 +1,18 @@
-# CTDAM-CEMAC — Bottin des Investisseurs
+# CTDAM-CEMAC — v2.0
 ## Plateforme digitale du marché des valeurs du Trésor CEMAC
-**BEAC / CRCT — v1.0 — Mars 2026**
+**BEAC / CRCT — v2.0 — 2026**
+
+---
+
+## Nouveauté v2.0 — Données Excel centralisées
+
+**Toutes les données dynamiques** de la plateforme proviennent d'un seul fichier :
+
+```
+CTDAM_CEMAC_Base_Donnees.xlsx
+```
+
+Plus aucune donnée simulée hardcodée. Chaque feuille Excel alimente directement un ou plusieurs onglets.
 
 ---
 
@@ -8,135 +20,133 @@
 
 ```
 ctdam_cemac/
-├── app.py                      # Point d'entrée principal
-├── Authentification.py         # Module d'authentification (ton fichier)
+├── app.py                          # Point d'entrée principal
+├── Authentification.py             # Module d'authentification
 ├── requirements.txt
-├── users.json                  # Créé automatiquement au 1er lancement
+├── CTDAM_CEMAC_Base_Donnees.xlsx   # ← BASE DE DONNÉES CENTRALE
+├── users.json                      # Créé automatiquement au 1er lancement
 ├── assets/
-│   └── style.css               # Thème BEAC (ton fichier CSS)
-├── Picture/
-│   ├── Nouveau_logo_BEAC.jpg   # À placer manuellement
-│   └── logo_dash.png           # À placer manuellement
+│   └── style.css                   # Thème BEAC
 ├── data/
 │   ├── __init__.py
-│   └── simulations.py          # Données CEMAC simulées
-└── pages/
-    ├── __init__.py
-    ├── accueil.py
-    ├── statistiques_publiques.py
-    ├── reglementation.py
-    ├── guide_investisseur.py
-    ├── publications.py
-    ├── faq.py
-    ├── inscription.py
-    ├── connexion.py
-    ├── bottin.py
-    ├── donnees_historiques.py
-    ├── calendrier.py
-    ├── simulation.py
-    ├── documents.py
-    ├── alertes.py
-    └── admin.py
+│   └── loader.py                   # ← Toutes les fonctions de lecture Excel
+├── Onglet/
+│   ├── accueil.py
+│   ├── statistiques_publiques.py
+│   ├── reglementation.py           # + guide + publications + FAQ
+│   ├── guide_investisseur.py
+│   ├── publications.py
+│   ├── faq.py
+│   ├── inscription.py
+│   ├── connexion.py
+│   ├── bottin.py
+│   ├── donnees_historiques.py
+│   ├── calendrier.py
+│   ├── macroeconomie.py            # ← NOUVEAU
+│   ├── echeances.py                # ← NOUVEAU (tombée des échéances)
+│   ├── simulation.py
+│   ├── documents.py
+│   ├── alertes.py
+│   └── admin.py
+└── Documentation/
+    ├── reglementation/             # Fichiers PDF règlements
+    └── publication/                # Fichiers PDF publications
 ```
+
+---
+
+## Feuilles Excel et ce qu'elles alimentent
+
+| Feuille Excel            | Onglet(s) alimenté(s)                        |
+|--------------------------|----------------------------------------------|
+| `EMISSIONS`              | Accueil (chiffres clés), Données historiques |
+| `REMBOURSEMENTS`         | Tombée des échéances                         |
+| `SVT`                    | Bottin, Accueil (nb SVT actifs)              |
+| `SGP`                    | Bottin                                       |
+| `SDB`                    | Bottin                                       |
+| `INVESTISSEURS_INST`     | Bottin                                       |
+| `PAYS_MACRO`             | Macroéconomie                                |
+| `ENCOURS_MENSUEL`        | Accueil (graphique pays), Statistiques       |
+| `CALENDRIER_EMISSIONS`   | Calendrier des émissions                     |
+| `COURBE_TAUX`            | Statistiques, Données historiques, Simulation|
+| `CALCULS_MARCHE`         | Outils de simulation (tab Données marché)    |
+| `DETENTEURS`             | Statistiques (répartition)                   |
+| `DOCUMENTS_META`         | Espace documentaire, Réglementation, Publications |
+| `UTILISATEURS`           | Admin (référence pour import)                |
+| `ALERTES_ABONNEMENTS`    | Alertes (référence)                          |
+| `KPIs_ACCUEIL`           | Accueil (formules auto)                      |
+| `PARAMETRES`             | Configuration globale                        |
+| `README`                 | Documentation interne                        |
+
+---
+
+## Mise à jour des données
+
+### Méthode 1 — Directement dans l'Excel
+1. Ouvrez `CTDAM_CEMAC_Base_Donnees.xlsx`
+2. Mettez à jour la/les feuille(s) souhaitée(s)
+3. Sauvegardez et rechargez la plateforme (F5)
+
+### Méthode 2 — Via l'interface Admin
+1. Connectez-vous avec un compte **Administrateur**
+2. Menu **Import données marché** dans la sidebar
+3. Téléversez le fichier Excel mis à jour **ou** importez une feuille partielle (CSV/Excel)
+
+### Méthode 3 — Import partiel par feuille
+Dans l'interface Admin → Import → sélectionnez la feuille cible → téléversez un CSV/Excel.
+
+---
+
+## Documents (Réglementation & Publications)
+
+Placez vos fichiers PDF dans :
+```
+Documentation/reglementation/   ← Règlements, Instructions, Circulaires
+Documentation/publication/      ← Bulletins, Rapports annuels, Notes
+```
+
+Puis renseignez le **chemin relatif** dans la colonne `Chemin Fichier` de la feuille `DOCUMENTS_META`.
+
+Exemple :
+```
+Documentation/reglementation/reglement_01_2024.pdf
+```
+
+---
+
+## Indicateurs disponibles par profil
+
+| Indicateur                               | Public | Investisseur | Opérateur |
+|------------------------------------------|:------:|:------------:|:---------:|
+| Encours par État (OTA, BTA, évolutif)    | ✅     | ✅           | ✅        |
+| Répartition volumes / émissions          | ✅     | ✅           | ✅        |
+| N dernières émissions                    | ✅     | ✅           | ✅        |
+| Calendrier des futures émissions         | ✅     | ✅           | ✅        |
+| Courbe des taux / Rendement à l'échéance | ✅     | ✅           | ✅        |
+| Inflation                                | ✅     | ✅           | ✅        |
+| Ratio Dette/PIB                          | ✅     | ✅           | ✅        |
+| Service de la dette / Recettes fiscales  | ✅     | ✅           | ✅        |
+| Coût d'émission (TRMP)                   | ✅     | ✅           | ✅        |
+| Répertoire SVT                           | ❌     | ✅           | ✅        |
+| Tombée des échéances (coupon + principal)| ❌     | ✅           | ✅        |
+| Poids titres publics / dette globale     | ❌     | ✅           | ✅        |
+| Poids titres publics / PIB               | ❌     | ✅           | ✅        |
+| Indice de concentration                  | ❌     | ✅           | ✅        |
+| Duration / Convexité / Spread            | ❌     | ✅           | ✅        |
+| Prix actuel d'un titre                   | ❌     | ✅           | ✅        |
+| Répartition volumes par SVT              | ❌     | ❌           | ✅        |
 
 ---
 
 ## Installation
 
-### 1. Prérequis
-- Python 3.10 ou supérieur
-- pip
-
-### 2. Installation des dépendances
 ```bash
 pip install -r requirements.txt
-```
-
-### 3. Ajouter les images
-Placez vos images dans le dossier `Picture/` :
-- `Nouveau_logo_BEAC.jpg` — Logo officiel BEAC
-- `logo_dash.png` — Illustration page de connexion
-
-### 4. Lancement
-```bash
 streamlit run app.py
 ```
 
-L'application sera accessible à l'adresse : **http://localhost:8501**
-
----
-
-## Profils utilisateurs
-
-| Profil | Statut JSON | Accès |
-|--------|-------------|-------|
-| Visiteur public | — | Pages publiques uniquement |
-| Investisseur validé | `Utilisateur` | Espace restreint complet |
-| Opérateur de marché | `Superviseur` | Espace restreint + mise à jour Bottin |
-| Administrateur BEAC | `Administrateur` | Accès total + back-office |
-
-### Créer le 1er compte administrateur
-Au premier lancement, `users.json` est vide. Utilisez le formulaire d'inscription
-et modifiez manuellement `users.json` pour passer le statut à `"Administrateur"` :
-
-```json
-{
-  "users": {
-    "admin_beac": {
-      "password": "<hash_sha256>",
-      "email": "admin@beac.int",
-      "status": "Administrateur",
-      "active": true
-    }
-  }
-}
-```
-
-Ou utilisez `import_users_from_excel("Data/Connexion.xlsx")` si vous avez le fichier Excel.
-
----
-
-## Fonctionnalités implémentées
-
-### Espace public (sans authentification)
-- [x] Page d'accueil avec chiffres clés et graphique encours par pays
-- [x] Statistiques agrégées (encours, courbe de taux, répartition détenteurs)
-- [x] Réglementation (bibliothèque de textes filtrables)
-- [x] Guide de l'investisseur (procédures, instruments, éligibilité, glossaire)
-- [x] Publications officielles
-- [x] FAQ interactive
-- [x] Formulaire d'inscription avec validation
-
-### Espace restreint (avec authentification)
-- [x] Bottin des investisseurs (SVT, SGP, SDB, institutionnels) avec filtres et export CSV
-- [x] Données historiques (encours mensuels, adjudications, courbe de taux)
-- [x] Calendrier des émissions
-- [x] Outils de simulation (calculateur rendement, simulateur investissement, comparateur)
-- [x] Espace documentaire
-- [x] Alertes personnalisées et newsletter
-
-### Espace d'administration (Admin BEAC uniquement)
-- [x] Gestion des utilisateurs (via module Authentification.py)
-- [x] Import données marché (Excel/CSV)
-- [x] Gestion du Bottin (validation des mises à jour)
-- [x] Gestion du calendrier des émissions et publication des résultats
-- [x] Tableau de bord d'utilisation
-- [x] Journal d'activité
-
----
-
-## Données simulées
-Les données sont générées dans `data/simulations.py` et reflètent fidèlement
-la réalité du marché CEMAC :
-- 6 pays membres (CMR, GAB, COG, RCA, GNQ, TCD)
-- 10 SVT, 4 SGP, 2 SDB, 6 investisseurs institutionnels
-- 24 mois d'historique d'encours (BTA + OTA)
-- 80 adjudications simulées avec taux réalistes
-- Courbe de taux complète (13 semaines à 15 ans)
-- Calendrier d'émissions à venir
-
-**Pour connecter de vraies données**, remplacez les fonctions dans `data/simulations.py`
-par des appels à votre base de données ou à vos fichiers Excel.
+**Premier lancement :** `users.json` est vide. Inscrivez un compte via le formulaire,
+puis modifiez manuellement le fichier pour passer son statut à `"Administrateur"`.
 
 ---
 
